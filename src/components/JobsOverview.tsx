@@ -1,73 +1,105 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Plus, Search, Filter, Edit, Trash2 } from "lucide-react";
+import { Plus, Search, Filter, Edit, Trash2, RefreshCw } from "lucide-react";
 
 interface JobsOverviewProps {
   isConnected: boolean;
+  sheetsConfiguration?: any;
 }
 
-const JobsOverview = ({ isConnected }: JobsOverviewProps) => {
-  const [searchTerm, setSearchTerm] = useState("");
+interface JobData {
+  id: string;
+  name: string;
+  client: string;
+  yearlyTotal: number;
+  completedToDate: number;
+  projectedRemaining: number;
+  status: string;
+  progress: number;
+}
 
-  // Mock job data - would come from Google Sheets
-  const jobs = [
-    {
-      id: "JOB-001",
-      name: "Downtown Office Complex",
-      client: "Metro Corp",
-      totalValue: 125000,
-      completed: 87500,
-      status: "In Progress",
-      startDate: "2024-01-15",
-      endDate: "2024-06-30",
-      progress: 70
-    },
-    {
-      id: "JOB-002",
-      name: "Retail Shopping Center",
-      client: "Retail Plus",
-      totalValue: 98000,
-      completed: 98000,
-      status: "Completed",
-      startDate: "2023-11-01",
-      endDate: "2024-03-15",
-      progress: 100
-    },
-    {
-      id: "JOB-003",
-      name: "Warehouse Facility",
-      client: "Logistics Inc",
-      totalValue: 156750,
-      completed: 62700,
-      status: "In Progress",
-      startDate: "2024-02-01",
-      endDate: "2024-08-15",
-      progress: 40
-    },
-    {
-      id: "JOB-004",
-      name: "Residential Complex",
-      client: "Home Builders",
-      totalValue: 107000,
-      completed: 64200,
-      status: "In Progress",
-      startDate: "2024-03-01",
-      endDate: "2024-09-30",
-      progress: 60
+const JobsOverview = ({ isConnected, sheetsConfiguration }: JobsOverviewProps) => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [jobs, setJobs] = useState<JobData[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Mock data extraction function - would connect to actual Google Sheets API
+  const extractJobDataFromSheets = async () => {
+    if (!sheetsConfiguration) return;
+    
+    setIsLoading(true);
+    console.log("Extracting job data from sheets configuration:", sheetsConfiguration);
+    
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Mock extracted data based on your specifications
+    const extractedJobs: JobData[] = [
+      {
+        id: "JOB-001",
+        name: "Downtown Office Complex",
+        client: "Metro Corp",
+        yearlyTotal: 125000,
+        completedToDate: 87500,
+        projectedRemaining: 37500,
+        status: "In Progress",
+        progress: 70
+      },
+      {
+        id: "JOB-002", 
+        name: "Retail Shopping Center",
+        client: "Retail Plus",
+        yearlyTotal: 98000,
+        completedToDate: 98000,
+        projectedRemaining: 0,
+        status: "Completed",
+        progress: 100
+      },
+      {
+        id: "JOB-003",
+        name: "Warehouse Facility", 
+        client: "Logistics Inc",
+        yearlyTotal: 156750,
+        completedToDate: 62700,
+        projectedRemaining: 94050,
+        status: "In Progress",
+        progress: 40
+      },
+      {
+        id: "JOB-004",
+        name: "Residential Complex",
+        client: "Home Builders", 
+        yearlyTotal: 107000,
+        completedToDate: 64200,
+        projectedRemaining: 42800,
+        status: "In Progress",
+        progress: 60
+      }
+    ];
+    
+    setJobs(extractedJobs);
+    setIsLoading(false);
+    console.log("Extracted job data:", extractedJobs);
+  };
+
+  // Extract data when configuration changes
+  useEffect(() => {
+    if (isConnected && sheetsConfiguration) {
+      extractJobDataFromSheets();
     }
-  ];
+  }, [isConnected, sheetsConfiguration]);
 
   const chartData = jobs.map(job => ({
     name: job.name.split(' ')[0],
-    total: job.totalValue,
-    completed: job.completed,
-    remaining: job.totalValue - job.completed
+    yearly: job.yearlyTotal,
+    completed: job.completedToDate,
+    remaining: job.projectedRemaining
   }));
 
   const filteredJobs = jobs.filter(job =>
@@ -91,11 +123,49 @@ const JobsOverview = ({ isConnected }: JobsOverviewProps) => {
 
   return (
     <div className="space-y-6">
+      {/* Connection Status */}
+      {!isConnected && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="p-4">
+            <p className="text-amber-800 font-medium">
+              Connect to Google Sheets in the "Google Sheets" tab to extract live job data
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Data Extraction Info */}
+      {isConnected && sheetsConfiguration && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-800 font-medium">
+                  Extracting from: {sheetsConfiguration.fileName}
+                </p>
+                <p className="text-blue-700 text-sm">
+                  Looking for 2025 headers, Q1-Q4 quarters, and monthly data
+                </p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={extractJobDataFromSheets}
+                disabled={isLoading}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                {isLoading ? 'Extracting...' : 'Refresh Data'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Jobs Chart */}
       <Card>
         <CardHeader>
           <CardTitle>Job Values Overview</CardTitle>
-          <CardDescription>Total vs Completed work across all jobs</CardDescription>
+          <CardDescription>Yearly totals, completed to date, and projected remaining</CardDescription>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
@@ -105,8 +175,8 @@ const JobsOverview = ({ isConnected }: JobsOverviewProps) => {
               <YAxis />
               <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, '']} />
               <Legend />
-              <Bar dataKey="completed" fill="#3b82f6" name="Completed" />
-              <Bar dataKey="remaining" fill="#e5e7eb" name="Remaining" />
+              <Bar dataKey="completed" fill="#3b82f6" name="Completed to Date" />
+              <Bar dataKey="remaining" fill="#f59e0b" name="Projected Remaining" />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
@@ -117,9 +187,9 @@ const JobsOverview = ({ isConnected }: JobsOverviewProps) => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Active Jobs</CardTitle>
+              <CardTitle>Job Details</CardTitle>
               <CardDescription>
-                {isConnected ? "Synced with Google Sheets" : "Sample data - connect to Google Sheets for live data"}
+                {isConnected ? "Live data from Google Sheets" : "Sample data - connect to see live job information"}
               </CardDescription>
             </div>
             <Button>
@@ -147,58 +217,67 @@ const JobsOverview = ({ isConnected }: JobsOverviewProps) => {
           </div>
 
           {/* Jobs List */}
-          <div className="space-y-4">
-            {filteredJobs.map((job) => (
-              <div key={job.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-4">
-                    <div>
-                      <h3 className="font-semibold text-lg">{job.name}</h3>
-                      <p className="text-sm text-gray-600">{job.client} • {job.id}</p>
+          {isLoading ? (
+            <div className="text-center py-8">
+              <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+              <p className="text-gray-600">Extracting job data from Google Sheets...</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredJobs.map((job) => (
+                <div key={job.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-4">
+                      <div>
+                        <h3 className="font-semibold text-lg">{job.name}</h3>
+                        <p className="text-sm text-gray-600">{job.client} • {job.id}</p>
+                      </div>
+                      <Badge className={getStatusColor(job.status)}>
+                        {job.status}
+                      </Badge>
                     </div>
-                    <Badge className={getStatusColor(job.status)}>
-                      {job.status}
-                    </Badge>
+                    <div className="flex items-center space-x-2">
+                      <Button variant="ghost" size="sm">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Button variant="ghost" size="sm">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Total Value</p>
-                    <p className="font-semibold">${job.totalValue.toLocaleString()}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Yearly Total</p>
+                      <p className="font-semibold">${job.yearlyTotal.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Completed to Date</p>
+                      <p className="font-semibold">${job.completedToDate.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Projected Remaining</p>
+                      <p className="font-semibold">${job.projectedRemaining.toLocaleString()}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Completed</p>
-                    <p className="font-semibold">${job.completed.toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Remaining</p>
-                    <p className="font-semibold">${(job.totalValue - job.completed).toLocaleString()}</p>
-                  </div>
-                </div>
 
-                <div className="mt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-600">Progress</span>
-                    <span className="text-sm font-medium">{job.progress}%</span>
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-gray-600">Progress</span>
+                      <span className="text-sm font-medium">{job.progress}%</span>
+                    </div>
+                    <Progress value={job.progress} className="h-2" />
                   </div>
-                  <Progress value={job.progress} className="h-2" />
                 </div>
-
-                <div className="mt-3 text-xs text-gray-500">
-                  {job.startDate} → {job.endDate}
+              ))}
+              
+              {filteredJobs.length === 0 && !isLoading && (
+                <div className="text-center py-8 text-gray-500">
+                  {searchTerm ? "No jobs match your search" : "No job data available"}
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

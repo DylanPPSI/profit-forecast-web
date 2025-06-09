@@ -89,7 +89,10 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="overview">
-            <JobsOverview isConnected={isConnectedToSheets} />
+            <JobsOverview 
+              isConnected={isConnectedToSheets} 
+              sheetsConfiguration={sheetsConfiguration} 
+            />
           </TabsContent>
 
           <TabsContent value="wip">
