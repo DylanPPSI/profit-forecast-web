@@ -3,24 +3,28 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
+import { Badge } from "@/components/ui/badge";
 import { FileSpreadsheet, TrendingUp, DollarSign, Settings, Download, Upload } from "lucide-react";
 import JobsOverview from "@/components/JobsOverview";
 import WIPGeneration from "@/components/WIPGeneration";
 import ProfitabilityControls from "@/components/ProfitabilityControls";
 import FutureJobPredictor from "@/components/FutureJobPredictor";
 import MetricsCards from "@/components/MetricsCards";
+import GoogleSheetsConnector from "@/components/GoogleSheetsConnector";
 
 const Index = () => {
   const [profitabilityPercentage, setProfitabilityPercentage] = useState([15]);
   const [fixedOverhead, setFixedOverhead] = useState(25000);
   const [isConnectedToSheets, setIsConnectedToSheets] = useState(false);
+  const [sheetsConfiguration, setSheetsConfiguration] = useState<any>(null);
 
-  const handleConnectToSheets = () => {
-    // This would normally integrate with Google Sheets API
-    setIsConnectedToSheets(true);
+  const handleSheetsConnection = (connected: boolean, config?: any) => {
+    setIsConnectedToSheets(connected);
+    setSheetsConfiguration(config);
+    
+    if (connected && config) {
+      console.log("Google Sheets connected with config:", config);
+    }
   };
 
   return (
@@ -39,14 +43,12 @@ const Index = () => {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <Button
-                variant={isConnectedToSheets ? "outline" : "default"}
-                onClick={handleConnectToSheets}
-                className="flex items-center space-x-2"
-              >
-                <FileSpreadsheet className="h-4 w-4" />
-                <span>{isConnectedToSheets ? "Connected to Sheets" : "Connect Google Sheets"}</span>
-              </Button>
+              {isConnectedToSheets && sheetsConfiguration && (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  <FileSpreadsheet className="h-3 w-3 mr-1" />
+                  {sheetsConfiguration.fileName}
+                </Badge>
+              )}
               <Button variant="outline" size="sm">
                 <Download className="h-4 w-4 mr-2" />
                 Export
@@ -78,11 +80,12 @@ const Index = () => {
 
         {/* Main Dashboard Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Jobs Overview</TabsTrigger>
             <TabsTrigger value="wip">WIP Generation</TabsTrigger>
             <TabsTrigger value="profitability">Profitability</TabsTrigger>
             <TabsTrigger value="predictor">Future Jobs</TabsTrigger>
+            <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -110,6 +113,10 @@ const Index = () => {
               profitabilityPercentage={profitabilityPercentage[0]}
               fixedOverhead={fixedOverhead}
             />
+          </TabsContent>
+
+          <TabsContent value="sheets">
+            <GoogleSheetsConnector onConnectionChange={handleSheetsConnection} />
           </TabsContent>
         </Tabs>
       </main>
