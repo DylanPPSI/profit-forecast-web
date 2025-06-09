@@ -78,8 +78,9 @@ const Index = () => {
 
         {/* Main Dashboard Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Jobs Overview</TabsTrigger>
+            <TabsTrigger value="extractor">Data Extractor</TabsTrigger>
             <TabsTrigger value="wip">WIP Generation</TabsTrigger>
             <TabsTrigger value="profitability">Profitability</TabsTrigger>
             <TabsTrigger value="predictor">Future Jobs</TabsTrigger>
@@ -87,6 +88,10 @@ const Index = () => {
 
           <TabsContent value="overview">
             <JobsOverview isConnected={isConnectedToSheets} />
+          </TabsContent>
+
+          <TabsContent value="extractor">
+            <EmailDataExtractor />
           </TabsContent>
 
           <TabsContent value="wip">
