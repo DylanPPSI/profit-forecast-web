@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,19 +11,25 @@ import FutureJobPredictor from "@/components/FutureJobPredictor";
 import MetricsCards from "@/components/MetricsCards";
 import GoogleSheetsConnector from "@/components/GoogleSheetsConnector";
 
-const Index = () => {
-  const [profitabilityPercentage, setProfitabilityPercentage] = useState([15]);
-  const [fixedOverhead, setFixedOverhead] = useState(25000);
-  const [isConnectedToSheets, setIsConnectedToSheets] = useState(false);
-  const [sheetsConfiguration, setSheetsConfiguration] = useState<any>(null);
+// Example: these would come from your context or props
+const isConnectedToSheets = true;
+const sheetsConfiguration = {};
 
-  const handleSheetsConnection = (connected: boolean, config?: any) => {
-    setIsConnectedToSheets(connected);
-    setSheetsConfiguration(config);
-    
-    if (connected && config) {
-      console.log("Google Sheets connected with config:", config);
-    }
+const Index = () => {
+  const [profitabilityPercentage, setProfitabilityPercentage] = useState([20]);
+  const [fixedOverhead, setFixedOverhead] = useState(0);
+
+  // Metrics state, updated by JobsOverview
+  const [metrics, setMetrics] = useState({
+    totalJobValue: 0,
+    completedWork: 0,
+    remainingWork: 0,
+    projectedProfit: 0,
+  });
+
+  const handleSheetsConnection = () => {
+    // Logic to handle Google Sheets connection
+    console.log("Connect to Google Sheets");
   };
 
   return (
@@ -76,7 +81,14 @@ const Index = () => {
         )}
 
         {/* Metrics Overview */}
-        <MetricsCards profitabilityPercentage={profitabilityPercentage[0]} fixedOverhead={fixedOverhead} />
+        <MetricsCards
+          totalJobValue={metrics.totalJobValue}
+          completedWork={metrics.completedWork}
+          remainingWork={metrics.remainingWork}
+          projectedProfit={metrics.projectedProfit}
+          profitabilityPercentage={profitabilityPercentage[0]}
+          fixedOverhead={fixedOverhead}
+        />
 
         {/* Main Dashboard Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
@@ -89,14 +101,16 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="overview">
-            <JobsOverview 
-              isConnected={isConnectedToSheets} 
-              sheetsConfiguration={sheetsConfiguration} 
+            <JobsOverview
+              isConnected={isConnectedToSheets}
+              sheetsConfiguration={sheetsConfiguration}
+              profitabilityPercentage={profitabilityPercentage[0]}
+              onMetricsChange={setMetrics}
             />
           </TabsContent>
 
           <TabsContent value="wip">
-            <WIPGeneration 
+            <WIPGeneration
               profitabilityPercentage={profitabilityPercentage[0]}
               fixedOverhead={fixedOverhead}
             />

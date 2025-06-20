@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,12 +5,20 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Plus, Search, Filter, Edit, Trash2, RefreshCw } from "lucide-react";
-
-interface JobsOverviewProps {
-  isConnected: boolean;
-  sheetsConfiguration?: any;
-}
+import { Plus, Search, Filter, Edit, Trash2, RefreshCw, FileSpreadsheet } from "lucide-react";
+import * as XLSX from "xlsx";
+import dayjs from "dayjs";
+import { useSheet } from "@/context/SheetContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import MetricsCards from "@/components/MetricsCards";
 
 interface JobData {
   id: string;
@@ -22,91 +29,248 @@ interface JobData {
   projectedRemaining: number;
   status: string;
   progress: number;
+  projections: { [key: string]: number }; // e.g. { "2025-03": 12345 }
 }
 
-const JobsOverview = ({ isConnected, sheetsConfiguration }: JobsOverviewProps) => {
-  const [searchTerm, setSearchTerm] = useState("");
+interface JobsOverviewProps {
+  isConnected: boolean;
+  sheetsConfiguration: any;
+  profitabilityPercentage: number;
+  onMetricsChange?: (metrics: {
+    totalJobValue: number;
+    completedWork: number;
+    remainingWork: number;
+    projectedProfit: number;
+  }) => void;
+}
+
+const months = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+const JobsOverview = ({
+  isConnected,
+  sheetsConfiguration,
+  profitabilityPercentage,
+  onMetricsChange,
+}: JobsOverviewProps) => {
+  const { sheetConfig } = useSheet();
   const [jobs, setJobs] = useState<JobData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Mock data extraction function - would connect to actual Google Sheets API
-  const extractJobDataFromSheets = async () => {
-    if (!sheetsConfiguration) return;
-    
-    setIsLoading(true);
-    console.log("Extracting job data from sheets configuration:", sheetsConfiguration);
-    
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Mock extracted data based on your specifications
-    const extractedJobs: JobData[] = [
-      {
-        id: "JOB-001",
-        name: "Downtown Office Complex",
-        client: "Metro Corp",
-        yearlyTotal: 125000,
-        completedToDate: 87500,
-        projectedRemaining: 37500,
-        status: "In Progress",
-        progress: 70
-      },
-      {
-        id: "JOB-002", 
-        name: "Retail Shopping Center",
-        client: "Retail Plus",
-        yearlyTotal: 98000,
-        completedToDate: 98000,
-        projectedRemaining: 0,
-        status: "Completed",
-        progress: 100
-      },
-      {
-        id: "JOB-003",
-        name: "Warehouse Facility", 
-        client: "Logistics Inc",
-        yearlyTotal: 156750,
-        completedToDate: 62700,
-        projectedRemaining: 94050,
-        status: "In Progress",
-        progress: 40
-      },
-      {
-        id: "JOB-004",
-        name: "Residential Complex",
-        client: "Home Builders", 
-        yearlyTotal: 107000,
-        completedToDate: 64200,
-        projectedRemaining: 42800,
-        status: "In Progress",
-        progress: 60
+  // Filter states for the filter card
+  const [pendingMonth, setPendingMonth] = useState<string>("any");
+  const [pendingYear, setPendingYear] = useState<string>("any");
+  const [pendingStatus, setPendingStatus] = useState<string>("any");
+
+  // Search and advanced filter states for the search/filter bar under Job Details
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sliderRemaining, setSliderRemaining] = useState<number>(0);
+  const [sliderCompleted, setSliderCompleted] = useState<number>(0);
+
+  // Applied filter states
+  const [filterMonth, setFilterMonth] = useState<string>("any");
+  const [filterYear, setFilterYear] = useState<string>("any");
+  const [filterStatus, setFilterStatus] = useState<string>("any");
+
+  const [monthProjCols, setMonthProjCols] = useState<
+    { idx: number; month: number; year: number; label: string }[]
+  >([]);
+
+  const normalizeHeader = (header: string) =>
+    header.replace(/\s+/g, " ").replace(/[\r\n]+/g, "").trim().toLowerCase();
+
+  // Extraction function
+  const extractJobDataFromWorkbook = (workbook: any) => {
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    let headerRowIdx = 2;
+    while (headerRowIdx < rows.length && rows[headerRowIdx].length < 2) headerRowIdx++;
+    const headerRow = rows[headerRowIdx];
+
+    // Map normalized header names to column indices
+    const headerDict: Record<string, number> = {};
+    headerRow.forEach((header, idx) => {
+      if (header && typeof header === "string") {
+        headerDict[normalizeHeader(header)] = idx;
       }
-    ];
-    
-    setJobs(extractedJobs);
+    });
+
+    // Find all columns that contain a month and year
+    const monthSet = new Set(months);
+    const monthCols: { idx: number; month: number; year: number; label: string }[] = [];
+    headerRow.forEach((header, idx) => {
+      if (typeof header !== "string") return;
+      const normalized = header.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+      for (const monthName of monthSet) {
+        if (normalized.toLowerCase().includes(monthName.toLowerCase())) {
+          const yearMatch = normalized.match(/(\d{4})/);
+          if (yearMatch) {
+            const year = parseInt(yearMatch[1], 10);
+            const month = dayjs(monthName + " 1, " + year).month() + 1; // 1-based
+            monthCols.push({ idx, month, year, label: header });
+          }
+          break;
+        }
+      }
+    });
+    setMonthProjCols(monthCols);
+
+    // Find current month/year
+    const now = dayjs();
+    const currentMonth = now.month() + 1; // 1-based
+    const currentYear = now.year();
+
+    // For each job row, extract info
+    const jobs: JobData[] = [];
+    for (let i = headerRowIdx + 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.length < 2) continue;
+
+      const projectNum = row[headerDict[normalizeHeader("Project #")]] || "";
+      const projectName = row[headerDict[normalizeHeader("Project Name")]] || "";
+
+      let completedToDate = 0;
+      let projectedRemaining = 0;
+      let yearlyTotal = 0;
+      const projections: { [key: string]: number } = {};
+
+      monthCols.forEach(col => {
+        const val = parseFloat((row[col.idx] || "0").toString().replace(/[^0-9.-]+/g, "")) || 0;
+        yearlyTotal += val;
+        const key = `${col.year}-${String(col.month).padStart(2, "0")}`;
+        projections[key] = val;
+        if (
+          col.year < currentYear ||
+          (col.year === currentYear && col.month <= currentMonth)
+        ) {
+          completedToDate += val;
+        } else {
+          projectedRemaining += val;
+        }
+      });
+
+      if (!projectNum && !projectName) continue;
+
+      jobs.push({
+        id: projectNum.toString(),
+        name: projectName.toString(),
+        client: "",
+        yearlyTotal,
+        completedToDate,
+        projectedRemaining,
+        status: completedToDate >= yearlyTotal ? "Completed" : "In Progress",
+        progress: yearlyTotal > 0 ? Math.round((completedToDate / yearlyTotal) * 100) : 0,
+        projections,
+      });
+    }
+
+    setJobs(jobs);
     setIsLoading(false);
-    console.log("Extracted job data:", extractedJobs);
   };
 
-  // Extract data when configuration changes
-  useEffect(() => {
-    if (isConnected && sheetsConfiguration) {
-      extractJobDataFromSheets();
-    }
-  }, [isConnected, sheetsConfiguration]);
+  // Refresh/extract handler
+  const extractJobDataFromSheets = async () => {
+    if (!sheetConfig) return;
+    setIsLoading(true);
 
-  const chartData = jobs.map(job => ({
-    name: job.name.split(' ')[0],
+    let workbook;
+    if (sheetConfig.workbook) {
+      workbook = sheetConfig.workbook;
+    } else if (sheetConfig.filePath) {
+      workbook = XLSX.readFile(sheetConfig.filePath);
+    } else {
+      setIsLoading(false);
+      return;
+    }
+    extractJobDataFromWorkbook(workbook);
+  };
+
+  useEffect(() => {
+    if (sheetConfig && sheetConfig.workbook) {
+      extractJobDataFromWorkbook(sheetConfig.workbook);
+    }
+  }, [sheetConfig]);
+
+  // Extract unique years from monthProjCols for year selector
+  const uniqueYears = Array.from(
+    new Set(monthProjCols.map(col => col.year))
+  ).sort();
+
+  // Only filter when GO is pressed
+  const handleApplyFilter = () => {
+    setFilterMonth(pendingMonth);
+    setFilterYear(pendingYear);
+    setFilterStatus(pendingStatus);
+  };
+
+  // Filtering logic for jobs table and chart
+  const isAny = (val: string) => val === "any" || !val;
+
+  const filteredJobs = jobs.filter(job => {
+    // Search filter (from search bar under Job Details)
+    const matchesSearch =
+      !searchTerm ||
+      job.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.id.toLowerCase().includes(searchTerm.toLowerCase());
+
+    // Status filter (from filter card)
+    const matchesStatus = isAny(filterStatus) ? true : job.status === filterStatus;
+
+    // Month/year filter (from filter card)
+    let matchesMonthYear = true;
+    if (!isAny(filterMonth) && !isAny(filterYear)) {
+      const key = `${filterYear}-${filterMonth}`;
+      matchesMonthYear = job.projections[key] > 0;
+    } else if (!isAny(filterMonth) && isAny(filterYear)) {
+      matchesMonthYear = Object.keys(job.projections).some(k => k.endsWith(`-${filterMonth}`) && job.projections[k] > 0);
+    } else if (isAny(filterMonth) && !isAny(filterYear)) {
+      matchesMonthYear = Object.keys(job.projections).some(k => k.startsWith(`${filterYear}-`) && job.projections[k] > 0);
+    }
+
+    // Sliders (from search/filter bar under Job Details)
+    let matchesRemaining = true;
+    let matchesCompleted = true;
+    if (job.status === "In Progress" && sliderRemaining > 0) {
+      matchesRemaining = job.projectedRemaining >= sliderRemaining;
+    }
+    if (job.status === "Completed" && sliderCompleted > 0) {
+      matchesCompleted = job.completedToDate >= sliderCompleted;
+    }
+
+    return matchesSearch && matchesStatus && matchesMonthYear && matchesRemaining && matchesCompleted;
+  });
+
+  // Chart data: always show all jobs currently listed in Job Details
+  const chartData = filteredJobs.map(job => ({
+    name: job.name, // full name for tooltip
+    shortName: job.name.split(' ')[0], // for axis label
     yearly: job.yearlyTotal,
     completed: job.completedToDate,
     remaining: job.projectedRemaining
   }));
 
-  const filteredJobs = jobs.filter(job =>
-    job.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Dynamic totals based on filtered jobs
+  const totalJobValue = filteredJobs.reduce((sum, job) => sum + job.yearlyTotal, 0);
+  const completedWork = filteredJobs.reduce((sum, job) => sum + job.completedToDate, 0);
+  const remainingWork = filteredJobs.reduce((sum, job) => sum + job.projectedRemaining, 0);
+  const projectedProfit = (completedWork * profitabilityPercentage) / 100;
+
+  // Update metrics in parent when filteredJobs or profitabilityPercentage changes
+  useEffect(() => {
+    if (onMetricsChange) {
+      onMetricsChange({
+        totalJobValue,
+        completedWork,
+        remainingWork,
+        projectedProfit,
+      });
+    }
+  }, [totalJobValue, completedWork, remainingWork, projectedProfit, onMetricsChange]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -121,10 +285,15 @@ const JobsOverview = ({ isConnected, sheetsConfiguration }: JobsOverviewProps) =
     }
   };
 
+  // Placeholder for WIP report generation
+  const generateWIPReport = () => {
+    alert("WIP Report generation not implemented yet.");
+  };
+
   return (
     <div className="space-y-6">
       {/* Connection Status */}
-      {!isConnected && (
+      {!sheetConfig && (
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="p-4">
             <p className="text-amber-800 font-medium">
@@ -135,13 +304,13 @@ const JobsOverview = ({ isConnected, sheetsConfiguration }: JobsOverviewProps) =
       )}
 
       {/* Data Extraction Info */}
-      {isConnected && sheetsConfiguration && (
+      {sheetConfig && (
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-800 font-medium">
-                  Extracting from: {sheetsConfiguration.fileName}
+                  Extracting from: {sheetConfig.fileName}
                 </p>
                 <p className="text-blue-700 text-sm">
                   Looking for 2025 headers, Q1-Q4 quarters, and monthly data
@@ -161,19 +330,100 @@ const JobsOverview = ({ isConnected, sheetsConfiguration }: JobsOverviewProps) =
         </Card>
       )}
 
+      {/* Filter Jobs By Month */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Filter Jobs By Month</CardTitle>
+          <CardDescription>
+            Select a month, year, and status to view jobs in progress for that period.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4 items-end">
+            <Select value={pendingYear} onValueChange={setPendingYear}>
+              <SelectTrigger>
+                <SelectValue placeholder="Year" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any Year</SelectItem>
+                {uniqueYears.map(year => (
+                  <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={pendingMonth} onValueChange={setPendingMonth}>
+              <SelectTrigger>
+                <SelectValue placeholder="Month" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any Month</SelectItem>
+                {months.map((month, idx) => (
+                  <SelectItem key={month} value={String(idx + 1).padStart(2, "0")}>{month}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={pendingStatus} onValueChange={setPendingStatus}>
+              <SelectTrigger>
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any Status</SelectItem>
+                <SelectItem value="In Progress">In Progress</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={handleApplyFilter}>GO</Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Jobs Chart */}
       <Card>
         <CardHeader>
           <CardTitle>Job Values Overview</CardTitle>
-          <CardDescription>Yearly totals, completed to date, and projected remaining</CardDescription>
+          <CardDescription>
+            Yearly totals, completed to date, and projected remaining
+          </CardDescription>
         </CardHeader>
+        
         <CardContent>
+          {/*}
+          <MetricsCards
+            totalJobValue={totalJobValue}
+            completedWork={completedWork}
+            remainingWork={remainingWork}
+            projectedProfit={projectedProfit}
+            profitabilityPercentage={profitabilityPercentage}
+            fixedOverhead={0}
+          />
+          */}
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
+              <XAxis 
+                dataKey="shortName"
+                tickFormatter={(value, index) => chartData[index]?.shortName}
+              />
               <YAxis />
-              <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, '']} />
+              <Tooltip 
+                formatter={(value, name, props) => [`$${value.toLocaleString()}`, name]}
+                content={({ active, payload, label }) => {
+                  if (active && payload && payload.length) {
+                    const job = chartData.find(j => j.shortName === label);
+                    return (
+                      <div className="bg-white p-2 rounded shadow text-xs">
+                        <div className="font-semibold">{job?.name}</div>
+                        {payload.map((entry, idx) => (
+                          <div key={idx}>
+                            <span style={{ color: entry.color }}>{entry.name}:</span> ${entry.value.toLocaleString()}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
               <Legend />
               <Bar dataKey="completed" fill="#3b82f6" name="Completed to Date" />
               <Bar dataKey="remaining" fill="#f59e0b" name="Projected Remaining" />
@@ -189,7 +439,7 @@ const JobsOverview = ({ isConnected, sheetsConfiguration }: JobsOverviewProps) =
             <div>
               <CardTitle>Job Details</CardTitle>
               <CardDescription>
-                {isConnected ? "Live data from Google Sheets" : "Sample data - connect to see live job information"}
+                {sheetConfig ? "Live data from Google Sheets" : "Sample data - connect to see live job information"}
               </CardDescription>
             </div>
             <Button>
@@ -210,10 +460,36 @@ const JobsOverview = ({ isConnected, sheetsConfiguration }: JobsOverviewProps) =
                 className="pl-10"
               />
             </div>
-            <Button variant="outline">
-              <Filter className="h-4 w-4 mr-2" />
-              Filter
-            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="flex items-center">
+                  <Filter className="h-4 w-4 mr-2" />
+                  Advanced
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72">
+                <div className="mb-4">
+                  <div className="font-medium mb-1">In Progress: Remaining ≥ ${sliderRemaining.toLocaleString()}</div>
+                  <Slider
+                    min={0}
+                    max={1000000}
+                    step={1000}
+                    value={[sliderRemaining]}
+                    onValueChange={([val]) => setSliderRemaining(val)}
+                  />
+                </div>
+                <div>
+                  <div className="font-medium mb-1">Completed: Completed ≥ ${sliderCompleted.toLocaleString()}</div>
+                  <Slider
+                    min={0}
+                    max={1000000}
+                    step={1000}
+                    value={[sliderCompleted]}
+                    onValueChange={([val]) => setSliderCompleted(val)}
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Jobs List */}

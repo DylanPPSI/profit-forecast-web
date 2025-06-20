@@ -1,19 +1,23 @@
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, TrendingUp, Calendar, Target } from "lucide-react";
 
 interface MetricsCardsProps {
+  totalJobValue: number;
+  completedWork: number;
+  remainingWork: number;
+  projectedProfit: number;
   profitabilityPercentage: number;
   fixedOverhead: number;
 }
 
-const MetricsCards = ({ profitabilityPercentage, fixedOverhead }: MetricsCardsProps) => {
-  // Mock data - would come from Google Sheets
-  const totalJobValue = 486750;
-  const completedWork = 312500;
-  const remainingWork = totalJobValue - completedWork;
-  const projectedProfit = (completedWork * profitabilityPercentage) / 100;
-
+const MetricsCards = ({
+  totalJobValue = 0,
+  completedWork = 0,
+  remainingWork = 0,
+  projectedProfit = 0,
+  profitabilityPercentage = 0,
+  fixedOverhead = 0,
+}: MetricsCardsProps) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       <Card>
@@ -37,7 +41,7 @@ const MetricsCards = ({ profitabilityPercentage, fixedOverhead }: MetricsCardsPr
         <CardContent>
           <div className="text-2xl font-bold">${completedWork.toLocaleString()}</div>
           <p className="text-xs text-muted-foreground">
-            {((completedWork / totalJobValue) * 100).toFixed(1)}% of total
+            {totalJobValue > 0 ? ((completedWork / totalJobValue) * 100).toFixed(1) : 0}% of total
           </p>
         </CardContent>
       </Card>
