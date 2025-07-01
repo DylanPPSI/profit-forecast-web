@@ -10,6 +10,7 @@ import ProfitabilityControls from "@/components/ProfitabilityControls";
 import FutureJobPredictor from "@/components/FutureJobPredictor";
 import MetricsCards from "@/components/MetricsCards";
 import GoogleSheetsConnector from "@/components/GoogleSheetsConnector";
+import ProgressTracker from "@/components/ProgressTracker";
 
 // Example: these would come from your context or props
 const isConnectedToSheets = true;
@@ -92,11 +93,12 @@ const Index = () => {
 
         {/* Main Dashboard Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="overview">Jobs Overview</TabsTrigger>
             <TabsTrigger value="wip">WIP Generation</TabsTrigger>
             <TabsTrigger value="profitability">Profitability</TabsTrigger>
             <TabsTrigger value="predictor">Future Jobs</TabsTrigger>
+            <TabsTrigger value="progress">Progress Tracker</TabsTrigger>
             <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
           </TabsList>
 
@@ -130,6 +132,10 @@ const Index = () => {
               profitabilityPercentage={profitabilityPercentage[0]}
               fixedOverhead={fixedOverhead}
             />
+          </TabsContent>
+
+          <TabsContent value="progress">
+            <ProgressTracker />
           </TabsContent>
 
           <TabsContent value="sheets">
