@@ -11,6 +11,7 @@ import FutureJobPredictor from "@/components/FutureJobPredictor";
 import MetricsCards from "@/components/MetricsCards";
 import GoogleSheetsConnector from "@/components/GoogleSheetsConnector";
 import ProgressTracker from "@/components/ProgressTracker";
+import ProgressTracker from "@/components/ProgressTracker";
 
 // Example: these would come from your context or props
 const isConnectedToSheets = true;
@@ -159,6 +160,10 @@ const Index = () => {
               profitabilityPercentage={profitabilityPercentage[0]}
               fixedOverhead={fixedOverhead}
             />
+          </TabsContent>
+
+          <TabsContent value="progress">
+            <ProgressTracker />
           </TabsContent>
 
           <TabsContent value="sheets">
