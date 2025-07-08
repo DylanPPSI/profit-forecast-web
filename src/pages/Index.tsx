@@ -11,6 +11,7 @@ import FutureJobPredictor from "@/components/FutureJobPredictor";
 import MetricsCards from "@/components/MetricsCards";
 import GoogleSheetsConnector from "@/components/GoogleSheetsConnector";
 import ProgressTracker from "@/components/ProgressTracker";
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 // Example: these would come from your context or props
 const isConnectedToSheets = true;
