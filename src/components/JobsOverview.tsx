@@ -19,6 +19,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import MetricsCards from "@/components/MetricsCards";
+import { supabase } from "./GoogleSheetsConnector"; // or wherever you export supabase
 
 interface JobData {
   id: string;
@@ -55,9 +56,24 @@ const JobsOverview = ({
   profitabilityPercentage,
   onMetricsChange,
 }: JobsOverviewProps) => {
-  const { sheetConfig } = useSheet();
+  const { sheetConfig, setSheetConfig } = useSheet();
+
+  useEffect(() => {
+    // If no file is set in context, try to restore from localStorage
+    if (!sheetConfig?.file) {
+      const lastFile = localStorage.getItem("activeSheetFile");
+      if (lastFile) {
+        setSheetConfig({ file: lastFile });
+      }
+    }
+  }, [sheetConfig, setSheetConfig]);
+
+  // Log the active sheet config for debugging
+  console.log("JobsOverview received sheetConfig:", sheetConfig);
+
   const [jobs, setJobs] = useState<JobData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [lastExtractedFile, setLastExtractedFile] = useState<string | null>(null);
 
   // Filter states for the filter card
   const [pendingMonth, setPendingMonth] = useState<string>("any");
@@ -290,6 +306,30 @@ const JobsOverview = ({
     alert("WIP Report generation not implemented yet.");
   };
 
+  useEffect(() => {
+    const fetchAndExtract = async () => {
+      if (
+        sheetConfig &&
+        sheetConfig.file &&
+        sheetConfig.file !== lastExtractedFile // Only extract if file changed
+      ) {
+        setIsLoading(true);
+        const { data, error } = await supabase.storage.from("xlsx-files").download(sheetConfig.file);
+        if (error || !data) {
+          setIsLoading(false);
+          return;
+        }
+        const arrayBuffer = await data.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: "array" });
+        extractJobDataFromWorkbook(workbook);
+        setLastExtractedFile(sheetConfig.file); // Update last extracted file
+        setIsLoading(false);
+      }
+    };
+    fetchAndExtract();
+    // Only run when sheetConfig.file changes
+  }, [sheetConfig?.file]);
+
   return (
     <div className="space-y-6">
       {/* Connection Status */}
@@ -297,7 +337,7 @@ const JobsOverview = ({
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="p-4">
             <p className="text-amber-800 font-medium">
-              Connect to Google Sheets in the "Google Sheets" tab to extract live job data
+              Connect to Supabase in the "Supabase" tab to extract live job data
             </p>
           </CardContent>
         </Card>
@@ -310,7 +350,7 @@ const JobsOverview = ({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-800 font-medium">
-                  Extracting from: {sheetConfig.fileName}
+                  Extracting from: {sheetConfig.file}
                 </p>
                 <p className="text-blue-700 text-sm">
                   Looking for 2025 headers, Q1-Q4 quarters, and monthly data

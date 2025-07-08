@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useSheet } from "@/context/SheetContext";
 import {
   Card,
@@ -20,218 +20,200 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   FileSpreadsheet,
-  Link,
   CheckCircle,
   AlertCircle,
   Upload,
+  Edit,
+  Trash2,
+  Save,
 } from "lucide-react";
-
-// Add XLSX import for parsing Excel files
 import * as XLSX from "xlsx";
-// import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
-// // Initialize Supabase client (replace with your actual keys)
-// const supabase = createClient(
-//   process.env.NEXT_PUBLIC_SUPABASE_URL || "https://pqpjfelenpzqtgkorbpb.supabase.co",
-//   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxcGpmZWxlbnB6cXRna29yYnBiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk2Nzk4MjcsImV4cCI6MjA2NTI1NTgyN30.f4hxU0nWJfAIBVxb7cn4l6xqr6iECgtU2hQeRNxgPYw"
-// );
-
-// lib/supabase.ts
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = "https://pqpjfelenpzqtgkorbpb.supabase.co";
-const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxcGpmZWxlbnB6cXRna29yYnBiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk2Nzk4MjcsImV4cCI6MjA2NTI1NTgyN30.f4hxU0nWJfAIBVxb7cn4l6xqr6iECgtU2hQeRNxgPYw";
-
+// Supabase credentials (use .env for production!)
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-
-interface GoogleSheetsConnectorProps {
-  onConnectionChange: (connected: boolean, sheetData?: any) => void;
-}
-
 const GoogleSheetsConnector = () => {
-  const { sheetConfig, setSheetConfig } = useSheet();
+  const { setSheetConfig } = useSheet();
   const [isConnected, setIsConnected] = useState(false);
+  const [availableFiles, setAvailableFiles] = useState<{ name: string }[]>([]);
   const [selectedFile, setSelectedFile] = useState("");
-  const [q1Range, setQ1Range] = useState("");
-  const [q2Range, setQ2Range] = useState("");
-  const [q3Range, setQ3Range] = useState("");
-  const [q4Range, setQ4Range] = useState("");
-  const [availableFiles, setAvailableFiles] = useState([
-    { id: "1", name: "Job Tracker 2024", url: "https://docs.google.com/spreadsheets/d/example1" },
-    { id: "2", name: "Project Database", url: "https://docs.google.com/spreadsheets/d/example2" },
-    { id: "3", name: "WIP Data Master", url: "https://docs.google.com/spreadsheets/d/example3" },
-  ]);
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-  const [uploadedFileData, setUploadedFileData] = useState<any>(null);
-  const [renamedFile, setRenamedFile] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [dragActive, setDragActive] = useState(false);
+  // const [q1Range, setQ1Range] = useState("");
+  // const [q2Range, setQ2Range] = useState("");
+  // const [q3Range, setQ3Range] = useState("");
+  // const [q4Range, setQ4Range] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [editFileName, setEditFileName] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleGoogleAuth = async () => {
-    try {
-      const popup = window.open(
-        "https://your-backend.com/auth/google", // Your backend auth route
-        "google-oauth",
-        "width=500,height=600"
-      );
-
-      const pollTimer = window.setInterval(() => {
-        if (!popup || popup.closed) {
-          window.clearInterval(pollTimer);
-          return;
-        }
-
-        try {
-          const url = new URL(popup.location.href);
-          if (url.pathname === "/auth/success") {
-            window.clearInterval(pollTimer);
-            popup.close();
-            setIsConnected(true);
-            onConnectionChange(true);
-            console.log("Google OAuth completed successfully");
-          }
-        } catch (e) {
-          // Ignore cross-origin errors while waiting
-        }
-      }, 500);
-    } catch (err) {
-      console.error("OAuth failed:", err);
-    }
-  };
-
-  const handleFileSelect = (fileId: string) => {
-    setSelectedFile(fileId);
-    setUploadedFileName(null);
-    setUploadedFileData(null);
-    const file = availableFiles.find(f => f.id === fileId);
-    console.log("Selected file:", file?.name);
-  };
-
-  // Save XLSX file to Supabase Storage and send data to jobs overview
-  const saveXlsxToSupabase = async (file: File, workbook: any, newName?: string) => {
-    setIsUploading(true);
-    try {
-      // Convert workbook to binary blob
-      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-      const fileName = newName || file.name;
-      // Upload to Supabase Storage (bucket: "xlsx-files")
-      const { data, error } = await supabase.storage
-        .from("xlsx-files")
-        .upload(fileName, new Blob([wbout]), { upsert: true });
-
+  // List files on mount
+  useEffect(() => {
+    const connectAndList = async () => {
+      const { data, error } = await supabase.storage.from("xlsx-files").list();
       if (error) {
-        alert("Failed to upload file to Supabase: " + error.message);
-        setIsUploading(false);
+        console.error("Error listing files:", error.message);
         return;
       }
+      if (data) {
+        const files = data.filter((item) => item.name && !item.name.endsWith("/"));
+        setAvailableFiles(files);
+        setIsConnected(true);
+        if (files.length > 0) setSelectedFile(files[0].name);
+      }
+    };
+    connectAndList();
+  }, []);
 
-      // Optionally, insert a record in a table for tracking
-      await supabase.from("uploaded_files").insert([
-        { file_name: fileName, original_name: file.name }
-      ]);
-
-      // Send data to jobs overview (call a callback or use context)
-      onConnectionChange(true, {
-        type: "xlsx",
-        workbook,
-        fileName,
-        supabasePath: data?.path,
-      });
-    } catch (err) {
-      alert("Error uploading file: " + (err as Error).message);
-    }
-    setIsUploading(false);
-  };
-
-  // Modified XLSX upload handler
+  // Upload XLSX file to Supabase
   const handleXlsxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadedFileName(file.name);
-    setRenamedFile(file.name);
-    setSelectedFile("");
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const data = evt.target?.result;
-      if (!data) return;
-      const workbook = XLSX.read(data, { type: "binary" });
-      setUploadedFileData(workbook); // <-- Make sure this is here!
-      setSheetConfig({
-        type: "xlsx",
-        workbook: uploadedFileData, // <-- this must be the parsed XLSX workbook object
-        fileName: uploadedFileName,
-        ranges: { Q1: q1Range, Q2: q2Range, Q3: q3Range, Q4: q4Range }
-      });
-      setIsConnected(true);
-    };
-    reader.readAsBinaryString(file);
-  };
-
-  // Handler for renaming the file and saving to Supabase
-  const handleRenameAndSave = async () => {
-    if (!uploadedFileData || !uploadedFileName || !renamedFile) return;
-    // Create a dummy File object for upload (browser limitation workaround)
-    const wbout = XLSX.write(uploadedFileData, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const file = new File([blob], { name: renamedFile, type: blob.type });
-    await saveXlsxToSupabase(file, uploadedFileData, renamedFile);
-    setUploadedFileName(renamedFile);
-    setUploadedFileData(uploadedFileData); // <-- Keep this!
-  };
-
-  const handleSaveConfiguration = () => {
-    console.log({
-      selectedFile,
-      uploadedFileData,
-      q1Range,
-      q2Range,
-      q3Range,
-      q4Range
-    });
-    if ((!selectedFile && !uploadedFileData) || !q1Range || !q2Range || !q3Range || !q4Range) {
-      alert("Please fill in all required fields");
+    if (!file.name.endsWith(".xlsx")) {
+      alert("Only .xlsx files are supported.");
       return;
     }
-
-    const configuration = {
-      fileId: selectedFile,
-      fileName: selectedFile
-        ? availableFiles.find(f => f.id === selectedFile)?.name
-        : uploadedFileName,
-      ranges: {
-        Q1: q1Range,
-        Q2: q2Range,
-        Q3: q3Range,
-        Q4: q4Range,
-      },
-      type: selectedFile ? "google" : "xlsx",
-      workbook: uploadedFileData,
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const data = evt.target?.result;
+      if (!data) return;
+      try {
+        const workbook = XLSX.read(data, { type: "array" });
+        const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+        const { error } = await supabase.storage
+          .from("xlsx-files")
+          .upload(file.name, new Blob([wbout]), { upsert: true });
+        if (error) {
+          alert("Failed to upload file to Supabase: " + error.message);
+          setIsUploading(false);
+          return;
+        }
+        alert("File uploaded to Supabase!");
+        // Refresh file list
+        const { data: files } = await supabase.storage.from("xlsx-files").list();
+        setAvailableFiles(files || []);
+      } catch (err) {
+        console.error("XLSX processing error:", err);
+        alert("There was a problem processing the Excel file.");
+      } finally {
+        setIsUploading(false);
+      }
     };
-
-    console.log("Saving configuration:", configuration);
-    setSheetConfig(configuration);;
+    reader.readAsArrayBuffer(file);
   };
 
-  const handleDisconnect = () => {
-    setIsConnected(false);
-    setSelectedFile("");
-    setQ1Range("");
-    setQ2Range("");
-    setQ3Range("");
-    setQ4Range("");
-    setUploadedFileName(null);
-    setUploadedFileData(null);
-    setSheetConfig(null);
+  // Delete file from Supabase
+  const handleDeleteFile = async () => {
+    if (!selectedFile) return;
+    if (!window.confirm(`Delete "${selectedFile}" from Supabase?`)) return;
+    const { error } = await supabase.storage.from("xlsx-files").remove([selectedFile]);
+    if (error) {
+      alert("Failed to delete file: " + error.message);
+      return;
+    }
+    alert("File deleted!");
+    // Refresh file list
+    const { data: files } = await supabase.storage.from("xlsx-files").list();
+    setAvailableFiles(files || []);
+    setSelectedFile(files && files.length > 0 ? files[0].name : "");
   };
+
+  // Edit (rename) file in Supabase
+  const handleEditFile = async () => {
+    if (!selectedFile || !editFileName || editFileName === selectedFile) {
+      setIsEditing(false);
+      return;
+    }
+    // Download the file
+    const { data, error } = await supabase.storage.from("xlsx-files").download(selectedFile);
+    if (error || !data) {
+      alert("Failed to download file for renaming.");
+      setIsEditing(false);
+      return;
+    }
+    // Upload with new name
+    const { error: uploadError } = await supabase.storage
+      .from("xlsx-files")
+      .upload(editFileName, data, { upsert: true });
+    if (uploadError) {
+      alert("Failed to upload renamed file: " + uploadError.message);
+      setIsEditing(false);
+      return;
+    }
+    // Delete old file
+    await supabase.storage.from("xlsx-files").remove([selectedFile]);
+    alert("File renamed!");
+    // Refresh file list
+    const { data: files } = await supabase.storage.from("xlsx-files").list();
+    setAvailableFiles(files || []);
+    setSelectedFile(editFileName);
+    setIsEditing(false);
+  };
+
+  // Save config to Supabase table (optional)
+  const handleSaveConfigToTable = async () => {
+    if (!selectedFile) {
+      alert("Please select a file.");
+      return;
+    }
+    // Example: Save config to a table called "file_configs"
+    const { error } = await supabase.from("file_configs").upsert([
+      {
+        file: selectedFile,
+        // q1: q1Range,
+        // q2: q2Range,
+        // q3: q3Range,
+        // q4: q4Range,
+        updated_at: new Date().toISOString(),
+      },
+    ]);
+    if (error) {
+      alert("Failed to save config to Supabase table: " + error.message);
+      return;
+    }
+    alert("File selection saved to Supabase table!");
+  };
+
+  // Save config locally
+  const handleSave = () => {
+    if (!selectedFile) {
+      alert("Please select a file.");
+      return;
+    }
+    setSheetConfig({
+      file: selectedFile,
+      // ranges: {
+      //   Q1: q1Range,
+      //   Q2: q2Range,
+      //   Q3: q3Range,
+      //   Q4: q4Range,
+      // },
+    });
+    alert("File selection saved locally!");
+  };
+
+  useEffect(() => {
+    const savedFile = localStorage.getItem("activeSheetFile");
+    if (savedFile) setSelectedFile(savedFile);
+  }, []);
+
+  useEffect(() => {
+    if (selectedFile) {
+      setSheetConfig({ file: selectedFile });
+      localStorage.setItem("activeSheetFile", selectedFile);
+      console.log("Active sheet set in context:", selectedFile);
+    }
+  }, [selectedFile, setSheetConfig]);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
           <FileSpreadsheet className="h-5 w-5" />
-          <span>Google Sheets or Excel Integration</span>
+          <span>Excel/Supabase Integration</span>
           {isConnected && (
             <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
               <CheckCircle className="h-3 w-3 mr-1" />
@@ -240,184 +222,147 @@ const GoogleSheetsConnector = () => {
           )}
         </CardTitle>
         <CardDescription>
-          Connect to your Google Sheets or upload an Excel file to sync job data and generate WIP reports
+          Files in Supabase are automatically listed below.
+          <br />
+          <span className="font-medium">Or upload a new Excel file:</span>
         </CardDescription>
       </CardHeader>
+
       <CardContent className="space-y-6">
-        {!isConnected ? (
-          <div className="text-center py-8">
-            <div
-              className={`bg-blue-50 rounded-lg p-6 mb-4 transition-all duration-200 border-2 ${dragActive ? "border-blue-400" : "border-transparent"}`}
-              onDragOver={e => { e.preventDefault(); setDragActive(true); }}
-              onDragLeave={e => { e.preventDefault(); setDragActive(false); }}
-              onDrop={e => {
-                e.preventDefault();
-                setDragActive(false);
-                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                  const file = e.dataTransfer.files[0];
-                  if (file.name.endsWith(".xlsx")) {
-                    const event = {
-                      target: { files: [file] }
-                    } as React.ChangeEvent<HTMLInputElement>;
-                    handleXlsxUpload(event);
-                  } else {
-                    alert("Please upload a valid .xlsx file.");
-                  }
-                }
-              }}
+        {/* Upload section */}
+        <div className="space-y-2">
+          <Label htmlFor="xlsx-upload">Upload Excel File</Label>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="flex items-center space-x-2"
+              type="button"
               onClick={() => fileInputRef.current?.click()}
-              style={{ cursor: "pointer" }}
+              disabled={isUploading}
             >
-              <FileSpreadsheet className="h-12 w-12 text-blue-600 mx-auto mb-3" />
-              <h3 className="text-lg font-medium text-blue-900 mb-2">Connect to Google Sheets</h3>
-              <p className="text-blue-700 text-sm mb-4">
-                Authorize access to your Google Sheets to sync job data automatically
-              </p>
-              <Button onClick={handleGoogleAuth} className="flex items-center space-x-2 mb-2">
-                <Link className="h-4 w-4" />
-                <span>Connect Google Sheets</span>
+              <Upload className="h-4 w-4" />
+              <span>{isUploading ? "Uploading..." : "Upload Excel (.xlsx)"}</span>
+            </Button>
+            <Input
+              ref={fileInputRef}
+              id="xlsx-upload"
+              type="file"
+              accept=".xlsx"
+              className="hidden"
+              onChange={handleXlsxUpload}
+              disabled={isUploading}
+            />
+          </div>
+          <span className="text-xs text-gray-500">
+            Choose an Excel file to upload to Supabase.
+          </span>
+        </div>
+
+        {/* File selection */}
+        {availableFiles.length > 0 ? (
+          <div className="space-y-2">
+            <Label htmlFor="file-select">Select Supabase File</Label>
+            <div className="flex gap-2 items-center">
+              <Select value={selectedFile} onValueChange={setSelectedFile}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a file from Supabase..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableFiles.map((file) => (
+                    <SelectItem key={file.name} value={file.name}>
+                      {file.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditFileName(selectedFile);
+                  setIsEditing(true);
+                }}
+                disabled={!selectedFile}
+                title="Edit file name"
+              >
+                <Edit className="h-4 w-4" />
               </Button>
-              <div className="my-4 flex items-center justify-center">
-                <span className="text-gray-400 text-xs mx-2">OR</span>
-              </div>
-              <Label htmlFor="xlsx-upload" className="flex flex-col items-center cursor-pointer">
-                <Button
-                  variant="outline"
-                  className="flex items-center space-x-2"
-                  type="button"
-                  onClick={e => {
-                    e.stopPropagation();
-                    fileInputRef.current?.click();
-                  }}
-                >
-                  <Upload className="h-4 w-4" />
-                  <span>Upload or Drag & Drop Excel (.xlsx)</span>
-                </Button>
-                <Input
-                  ref={fileInputRef}
-                  id="xlsx-upload"
-                  type="file"
-                  accept=".xlsx"
-                  className="hidden"
-                  onChange={handleXlsxUpload}
-                />
-                <span className="text-xs text-gray-500 mt-2">
-                  Drag and drop your .xlsx file here, or click to select.
-                </span>
-              </Label>
-              {uploadedFileName && (
-                <div className="mt-2 text-green-700 text-sm">
-                  Uploaded: {uploadedFileName}
-                </div>
-              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDeleteFile}
+                disabled={!selectedFile}
+                title="Delete file"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
-            <p className="text-xs text-gray-500">
-              You'll be redirected to Google to authorize access to your spreadsheets, or upload an Excel file instead.
-            </p>
+            {isEditing && (
+              <div className="flex gap-2 mt-2">
+                <Input
+                  value={editFileName}
+                  onChange={e => setEditFileName(e.target.value)}
+                  placeholder="New file name"
+                />
+                <Button size="sm" onClick={handleEditFile}>
+                  <Save className="h-4 w-4 mr-1" /> Save
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
+                  Cancel
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* File Selection */}
-            {!uploadedFileName && (
-              <div className="space-y-2">
-                <Label htmlFor="file-select">Select Spreadsheet</Label>
-                <Select value={selectedFile} onValueChange={handleFileSelect}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a spreadsheet..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableFiles.map((file) => (
-                      <SelectItem key={file.id} value={file.id}>
-                        {file.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {uploadedFileName && (
-              <div className="space-y-2">
-                <Label>Uploaded Excel File</Label>
-                <div className="p-2 bg-green-50 rounded text-green-700 text-sm flex items-center gap-2">
-                  <Input
-                    className="w-auto flex-1"
-                    value={renamedFile ?? uploadedFileName}
-                    onChange={e => setRenamedFile(e.target.value)}
-                    disabled={isUploading}
-                  />
-                  <Button
-                    size="sm"
-                    onClick={handleRenameAndSave}
-                    disabled={isUploading || !renamedFile || renamedFile === uploadedFileName}
-                  >
-                    {isUploading ? "Saving..." : "Rename & Save"}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Range Configuration */}
-            {(selectedFile || uploadedFileName) && (
-              <div className="space-y-4">
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-3 flex items-center">
-                    <AlertCircle className="h-4 w-4 mr-2 text-amber-600" />
-                    Configure Data Ranges
-                  </h4>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Specify the cell ranges for each quarter's job data (e.g., "A2:E50")
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="q1-range">Q1 Data Range</Label>
-                      <Input
-                        id="q1-range"
-                        placeholder="e.g., A2:E25"
-                        value={q1Range}
-                        onChange={(e) => setQ1Range(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="q2-range">Q2 Data Range</Label>
-                      <Input
-                        id="q2-range"
-                        placeholder="e.g., A26:E50"
-                        value={q2Range}
-                        onChange={(e) => setQ2Range(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="q3-range">Q3 Data Range</Label>
-                      <Input
-                        id="q3-range"
-                        placeholder="e.g., A51:E75"
-                        value={q3Range}
-                        onChange={(e) => setQ3Range(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="q4-range">Q4 Data Range</Label>
-                      <Input
-                        id="q4-range"
-                        placeholder="e.g., A76:E100"
-                        value={q4Range}
-                        onChange={(e) => setQ4Range(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between pt-4 border-t">
-                  <Button variant="outline" onClick={handleDisconnect}>
-                    Disconnect
-                  </Button>
-                  <Button onClick={handleSaveConfiguration}>
-                    Save Configuration
-                  </Button>
-                </div>
-              </div>
-            )}
+          <div className="text-sm text-muted-foreground flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-yellow-600" />
+            No files found in Supabase storage.
           </div>
         )}
+
+        {/* Range configuration - commented out */}
+        {/* <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label>Q1 Range</Label>
+            <Input
+              value={q1Range}
+              onChange={(e) => setQ1Range(e.target.value)}
+              placeholder="e.g. A2:C10"
+            />
+          </div>
+          <div>
+            <Label>Q2 Range</Label>
+            <Input
+              value={q2Range}
+              onChange={(e) => setQ2Range(e.target.value)}
+              placeholder="e.g. D2:F10"
+            />
+          </div>
+          <div>
+            <Label>Q3 Range</Label>
+            <Input
+              value={q3Range}
+              onChange={(e) => setQ3Range(e.target.value)}
+              placeholder="e.g. G2:I10"
+            />
+          </div>
+          <div>
+            <Label>Q4 Range</Label>
+            <Input
+              value={q4Range}
+              onChange={(e) => setQ4Range(e.target.value)}
+              placeholder="e.g. J2:L10"
+            />
+          </div>
+        </div> */}
+
+        {/* Save configuration */}
+        <div className="pt-4 flex gap-2">
+          <Button onClick={handleSave}>Set Active File (Local)</Button>
+          {/* <Button variant="outline" onClick={handleSaveConfigToTable}>
+            Save File Selection to Supabase Table
+          </Button> */}
+        </div>
       </CardContent>
     </Card>
   );

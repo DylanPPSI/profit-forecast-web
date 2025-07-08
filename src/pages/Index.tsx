@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import ProfitabilityControls from "@/components/ProfitabilityControls";
 import FutureJobPredictor from "@/components/FutureJobPredictor";
 import MetricsCards from "@/components/MetricsCards";
 import GoogleSheetsConnector from "@/components/GoogleSheetsConnector";
+import ProgressTracker from "@/components/ProgressTracker";
 
 // Example: these would come from your context or props
 const isConnectedToSheets = true;
@@ -26,6 +27,24 @@ const Index = () => {
     remainingWork: 0,
     projectedProfit: 0,
   });
+
+  // Persisted tab state
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem("dashboardTab") || "overview";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("dashboardTab", activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    localStorage.setItem("metrics", JSON.stringify(metrics));
+  }, [metrics]);
+
+  useEffect(() => {
+    const savedMetrics = localStorage.getItem("metrics");
+    if (savedMetrics) setMetrics(JSON.parse(savedMetrics));
+  }, []);
 
   const handleSheetsConnection = () => {
     // Logic to handle Google Sheets connection
@@ -91,13 +110,19 @@ const Index = () => {
         />
 
         {/* Main Dashboard Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          defaultValue="overview"
+          className="space-y-6"
+        >
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Jobs Overview</TabsTrigger>
+            <TabsTrigger value="progress">Progress Tracker</TabsTrigger>
             <TabsTrigger value="wip">WIP Generation</TabsTrigger>
             <TabsTrigger value="profitability">Profitability</TabsTrigger>
             <TabsTrigger value="predictor">Future Jobs</TabsTrigger>
-            <TabsTrigger value="sheets">Google Sheets</TabsTrigger>
+            <TabsTrigger value="sheets">Supabase</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -107,6 +132,10 @@ const Index = () => {
               profitabilityPercentage={profitabilityPercentage[0]}
               onMetricsChange={setMetrics}
             />
+          </TabsContent>
+          
+          <TabsContent value="progress">
+            <ProgressTracker />
           </TabsContent>
 
           <TabsContent value="wip">
