@@ -118,11 +118,12 @@ const Index = () => {
           defaultValue="overview"
           className="space-y-6"
         >
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="overview">Jobs Overview</TabsTrigger>
             <TabsTrigger value="progress">Progress Tracker</TabsTrigger>
             <TabsTrigger value="bids">Bids</TabsTrigger>
             <TabsTrigger value="wip">WIP Generation</TabsTrigger>
+            <TabsTrigger value="bids">Bids</TabsTrigger>
             <TabsTrigger value="profitability">Profitability</TabsTrigger>
             <TabsTrigger value="predictor">Future Jobs</TabsTrigger>
             <TabsTrigger value="sheets">Supabase</TabsTrigger>
@@ -152,6 +153,10 @@ const Index = () => {
             />
           </TabsContent>
 
+          <TabsContent value="bids">
+            <Bids />
+          </TabsContent>
+
           <TabsContent value="profitability">
             <ProfitabilityControls
               profitabilityPercentage={profitabilityPercentage}
@@ -166,10 +171,6 @@ const Index = () => {
               profitabilityPercentage={profitabilityPercentage[0]}
               fixedOverhead={fixedOverhead}
             />
-          </TabsContent>
-
-          <TabsContent value="progress">
-            <ProgressTracker />
           </TabsContent>
 
           <TabsContent value="sheets">
