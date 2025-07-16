@@ -12,6 +12,7 @@ import MetricsCards from "@/components/MetricsCards";
 import GoogleSheetsConnector from "@/components/GoogleSheetsConnector";
 import ProgressTracker from "@/components/ProgressTracker";
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import Bids from "@/components/Bids";
 
 // Example: these would come from your context or props
 const isConnectedToSheets = true;
@@ -120,6 +121,7 @@ const Index = () => {
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Jobs Overview</TabsTrigger>
             <TabsTrigger value="progress">Progress Tracker</TabsTrigger>
+            <TabsTrigger value="bids">Bids</TabsTrigger>
             <TabsTrigger value="wip">WIP Generation</TabsTrigger>
             <TabsTrigger value="profitability">Profitability</TabsTrigger>
             <TabsTrigger value="predictor">Future Jobs</TabsTrigger>
@@ -137,6 +139,10 @@ const Index = () => {
           
           <TabsContent value="progress">
             <ProgressTracker />
+          </TabsContent>
+
+          <TabsContent value="bids">
+            <Bids />
           </TabsContent>
 
           <TabsContent value="wip">

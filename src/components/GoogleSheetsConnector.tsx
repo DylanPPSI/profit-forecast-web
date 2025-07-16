@@ -1,31 +1,17 @@
 import { useState, useRef, useEffect } from "react";
 import { useSheet } from "@/context/SheetContext";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
-  FileSpreadsheet,
-  CheckCircle,
-  AlertCircle,
-  Upload,
-  Edit,
-  Trash2,
-  Save,
+  FileSpreadsheet, CheckCircle, AlertCircle, Upload, Edit, Trash2, Save,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { createClient } from "@supabase/supabase-js";
@@ -35,26 +21,42 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+const uploadFolders = {
+  "Pending Bids": "Bid/Pending",
+  "Submitted Bids": "Bid/Submitted",
+  "WIP": "WIP/Backlog",
+};
+
+const selectCategories = [
+  { label: "Pending Bids", folder: "Bid/Pending" },
+  { label: "WIP", folder: "WIP/Backlog" },
+];
+
 const GoogleSheetsConnector = () => {
   const { setSheetConfig } = useSheet();
   const [isConnected, setIsConnected] = useState(false);
+
+  // For upload
+  const [fileType, setFileType] = useState('');
+  const [fileTypeError, setFileTypeError] = useState(false);
+
+  // For selecting active file
+  const [activeCategory, setActiveCategory] = useState(selectCategories[0].label);
   const [availableFiles, setAvailableFiles] = useState<{ name: string }[]>([]);
   const [selectedFile, setSelectedFile] = useState("");
-  // const [q1Range, setQ1Range] = useState("");
-  // const [q2Range, setQ2Range] = useState("");
-  // const [q3Range, setQ3Range] = useState("");
-  // const [q4Range, setQ4Range] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [editFileName, setEditFileName] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // List files on mount
+  // List files for the selected category
   useEffect(() => {
-    const connectAndList = async () => {
-      const { data, error } = await supabase.storage.from("xlsx-files").list();
+    const listFiles = async () => {
+      const folder = selectCategories.find(c => c.label === activeCategory)?.folder || "";
+      const { data, error } = await supabase.storage.from("xlsx-files").list(folder);
       if (error) {
         console.error("Error listing files:", error.message);
+        setAvailableFiles([]);
         return;
       }
       if (data) {
@@ -62,15 +64,22 @@ const GoogleSheetsConnector = () => {
         setAvailableFiles(files);
         setIsConnected(true);
         if (files.length > 0) setSelectedFile(files[0].name);
+        else setSelectedFile("");
       }
     };
-    connectAndList();
-  }, []);
+    listFiles();
+  }, [activeCategory]);
 
   // Upload XLSX file to Supabase
   const handleXlsxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!fileType) {
+      setFileTypeError(true);
+      alert("Please select a file type before uploading.");
+      return;
+    }
+    setFileTypeError(false);
     if (!file.name.endsWith(".xlsx")) {
       alert("Only .xlsx files are supported.");
       return;
@@ -83,18 +92,22 @@ const GoogleSheetsConnector = () => {
       try {
         const workbook = XLSX.read(data, { type: "array" });
         const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+        const folder = uploadFolders[fileType];
+        const uploadPath = `${folder}/${file.name}`;
         const { error } = await supabase.storage
           .from("xlsx-files")
-          .upload(file.name, new Blob([wbout]), { upsert: true });
+          .upload(uploadPath, new Blob([wbout]), { upsert: true });
         if (error) {
           alert("Failed to upload file to Supabase: " + error.message);
           setIsUploading(false);
           return;
         }
         alert("File uploaded to Supabase!");
-        // Refresh file list
-        const { data: files } = await supabase.storage.from("xlsx-files").list();
-        setAvailableFiles(files || []);
+        // Refresh file list if in the same category
+        if (activeCategory && uploadFolders[fileType] === selectCategories.find(c => c.label === activeCategory)?.folder) {
+          const { data: files } = await supabase.storage.from("xlsx-files").list(folder);
+          setAvailableFiles((files || []).filter((item) => item.name && !item.name.endsWith("/")));
+        }
       } catch (err) {
         console.error("XLSX processing error:", err);
         alert("There was a problem processing the Excel file.");
@@ -108,16 +121,18 @@ const GoogleSheetsConnector = () => {
   // Delete file from Supabase
   const handleDeleteFile = async () => {
     if (!selectedFile) return;
+    const folder = selectCategories.find(c => c.label === activeCategory)?.folder || "";
+    const filePath = `${folder}/${selectedFile}`;
     if (!window.confirm(`Delete "${selectedFile}" from Supabase?`)) return;
-    const { error } = await supabase.storage.from("xlsx-files").remove([selectedFile]);
+    const { error } = await supabase.storage.from("xlsx-files").remove([filePath]);
     if (error) {
       alert("Failed to delete file: " + error.message);
       return;
     }
     alert("File deleted!");
     // Refresh file list
-    const { data: files } = await supabase.storage.from("xlsx-files").list();
-    setAvailableFiles(files || []);
+    const { data: files } = await supabase.storage.from("xlsx-files").list(folder);
+    setAvailableFiles((files || []).filter((item) => item.name && !item.name.endsWith("/")));
     setSelectedFile(files && files.length > 0 ? files[0].name : "");
   };
 
@@ -127,8 +142,11 @@ const GoogleSheetsConnector = () => {
       setIsEditing(false);
       return;
     }
+    const folder = selectCategories.find(c => c.label === activeCategory)?.folder || "";
+    const oldPath = `${folder}/${selectedFile}`;
+    const newPath = `${folder}/${editFileName}`;
     // Download the file
-    const { data, error } = await supabase.storage.from("xlsx-files").download(selectedFile);
+    const { data, error } = await supabase.storage.from("xlsx-files").download(oldPath);
     if (error || !data) {
       alert("Failed to download file for renaming.");
       setIsEditing(false);
@@ -137,44 +155,20 @@ const GoogleSheetsConnector = () => {
     // Upload with new name
     const { error: uploadError } = await supabase.storage
       .from("xlsx-files")
-      .upload(editFileName, data, { upsert: true });
+      .upload(newPath, data, { upsert: true });
     if (uploadError) {
       alert("Failed to upload renamed file: " + uploadError.message);
       setIsEditing(false);
       return;
     }
     // Delete old file
-    await supabase.storage.from("xlsx-files").remove([selectedFile]);
+    await supabase.storage.from("xlsx-files").remove([oldPath]);
     alert("File renamed!");
     // Refresh file list
-    const { data: files } = await supabase.storage.from("xlsx-files").list();
-    setAvailableFiles(files || []);
+    const { data: files } = await supabase.storage.from("xlsx-files").list(folder);
+    setAvailableFiles((files || []).filter((item) => item.name && !item.name.endsWith("/")));
     setSelectedFile(editFileName);
     setIsEditing(false);
-  };
-
-  // Save config to Supabase table (optional)
-  const handleSaveConfigToTable = async () => {
-    if (!selectedFile) {
-      alert("Please select a file.");
-      return;
-    }
-    // Example: Save config to a table called "file_configs"
-    const { error } = await supabase.from("file_configs").upsert([
-      {
-        file: selectedFile,
-        // q1: q1Range,
-        // q2: q2Range,
-        // q3: q3Range,
-        // q4: q4Range,
-        updated_at: new Date().toISOString(),
-      },
-    ]);
-    if (error) {
-      alert("Failed to save config to Supabase table: " + error.message);
-      return;
-    }
-    alert("File selection saved to Supabase table!");
   };
 
   // Save config locally
@@ -185,28 +179,35 @@ const GoogleSheetsConnector = () => {
     }
     setSheetConfig({
       file: selectedFile,
-      // ranges: {
-      //   Q1: q1Range,
-      //   Q2: q2Range,
-      //   Q3: q3Range,
-      //   Q4: q4Range,
-      // },
+      category: activeCategory,
+      path: selectCategories.find(c => c.label === activeCategory)?.folder || "",
     });
     alert("File selection saved locally!");
   };
 
+  // Restore last used file/category
   useEffect(() => {
+    const savedCategory = localStorage.getItem("activeSheetCategory");
     const savedFile = localStorage.getItem("activeSheetFile");
+    if (savedCategory && selectCategories.some(c => c.label === savedCategory)) {
+      setActiveCategory(savedCategory);
+    }
     if (savedFile) setSelectedFile(savedFile);
   }, []);
 
+  // Persist selection and update context
   useEffect(() => {
     if (selectedFile) {
-      setSheetConfig({ file: selectedFile });
+      setSheetConfig({
+        file: selectedFile,
+        category: activeCategory,
+        path: selectCategories.find(c => c.label === activeCategory)?.folder || "",
+      });
       localStorage.setItem("activeSheetFile", selectedFile);
-      console.log("Active sheet set in context:", selectedFile);
+      localStorage.setItem("activeSheetCategory", activeCategory);
+      console.log("Active sheet set in context:", selectedFile, "Category:", activeCategory);
     }
-  }, [selectedFile, setSheetConfig]);
+  }, [selectedFile, activeCategory, setSheetConfig]);
 
   return (
     <Card>
@@ -243,6 +244,31 @@ const GoogleSheetsConnector = () => {
               <Upload className="h-4 w-4" />
               <span>{isUploading ? "Uploading..." : "Upload Excel (.xlsx)"}</span>
             </Button>
+            <div className="flex gap-2 items-center">
+              <Select
+                value={fileType}
+                onValueChange={(val) => {
+                  setFileType(val);
+                  setFileTypeError(false);
+                }}
+              >
+                <SelectTrigger
+                  style={fileTypeError ? { borderColor: 'red', borderWidth: 2 } : {}}
+                >
+                  <SelectValue placeholder="Select an Option" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.keys(uploadFolders).map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {fileTypeError && (
+                <span className="text-red-600 text-xs ml-2">File type is required</span>
+              )}
+            </div>
             <Input
               ref={fileInputRef}
               id="xlsx-upload"
@@ -259,6 +285,21 @@ const GoogleSheetsConnector = () => {
         </div>
 
         {/* File selection */}
+        <div className="space-y-2">
+          <Label htmlFor="category-select">Select File Category</Label>
+          <Select value={activeCategory} onValueChange={setActiveCategory}>
+            <SelectTrigger>
+              <SelectValue placeholder="Choose a category..." />
+            </SelectTrigger>
+            <SelectContent>
+              {selectCategories.map((cat) => (
+                <SelectItem key={cat.label} value={cat.label}>
+                  {cat.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         {availableFiles.length > 0 ? (
           <div className="space-y-2">
             <Label htmlFor="file-select">Select Supabase File</Label>
@@ -320,48 +361,15 @@ const GoogleSheetsConnector = () => {
           </div>
         )}
 
-        {/* Range configuration - commented out */}
-        {/* <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label>Q1 Range</Label>
-            <Input
-              value={q1Range}
-              onChange={(e) => setQ1Range(e.target.value)}
-              placeholder="e.g. A2:C10"
-            />
-          </div>
-          <div>
-            <Label>Q2 Range</Label>
-            <Input
-              value={q2Range}
-              onChange={(e) => setQ2Range(e.target.value)}
-              placeholder="e.g. D2:F10"
-            />
-          </div>
-          <div>
-            <Label>Q3 Range</Label>
-            <Input
-              value={q3Range}
-              onChange={(e) => setQ3Range(e.target.value)}
-              placeholder="e.g. G2:I10"
-            />
-          </div>
-          <div>
-            <Label>Q4 Range</Label>
-            <Input
-              value={q4Range}
-              onChange={(e) => setQ4Range(e.target.value)}
-              placeholder="e.g. J2:L10"
-            />
-          </div>
-        </div> */}
-
         {/* Save configuration */}
         <div className="pt-4 flex gap-2">
-          <Button onClick={handleSave}>Set Active File (Local)</Button>
-          {/* <Button variant="outline" onClick={handleSaveConfigToTable}>
-            Save File Selection to Supabase Table
-          </Button> */}
+          <Button onClick={handleSave}>
+            {activeCategory === "WIP"
+              ? "Set Active File - Jobs"
+              : activeCategory === "Pending Bids"
+              ? "Set Active File Bids"
+              : "Set Active File"}
+          </Button>
         </div>
       </CardContent>
     </Card>
