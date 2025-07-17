@@ -153,10 +153,6 @@ const Index = () => {
             />
           </TabsContent>
 
-          <TabsContent value="bids">
-            <Bids />
-          </TabsContent>
-
           <TabsContent value="profitability">
             <ProfitabilityControls
               profitabilityPercentage={profitabilityPercentage}
