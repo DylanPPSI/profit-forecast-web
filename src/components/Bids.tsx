@@ -20,14 +20,6 @@ const Bids = () => {
               <TabsTrigger value="backlog">Backlog</TabsTrigger>
               <TabsTrigger value="generate">Generate</TabsTrigger>
             </TabsList>
-
-            <TabsContent value="backlog" className="mt-6">
-              <BidsBacklog />
-            </TabsContent>
-
-            <TabsContent value="generate" className="mt-6">
-              <BidsGenerate />
-            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
