@@ -50,6 +50,12 @@ const months = [
   "July", "August", "September", "October", "November", "December"
 ];
 
+const selectCategories = [
+  { label: "Pending Bids", folder: "Bid/Pending" },
+  { label: "WIP", folder: "WIP/Backlog" },
+  { label: "Submitted Bids", folder: "Bid/Submitted" },
+];
+
 const JobsOverview = ({
   isConnected,
   sheetsConfiguration,
@@ -60,16 +66,20 @@ const JobsOverview = ({
 
   useEffect(() => {
     // If no file is set in context, try to restore from localStorage
-    if (!sheetConfig?.file) {
+    if (!sheetConfig?.file || !sheetConfig?.path) {
       const lastFile = localStorage.getItem("activeSheetFile");
-      if (lastFile) {
-        setSheetConfig({ file: lastFile });
+      const lastCategory = localStorage.getItem("activeSheetCategory");
+      // Use your selectCategories array to get the folder
+      const lastPath = selectCategories.find(c => c.label === lastCategory)?.folder || "";
+      if (lastFile && lastPath) {
+        setSheetConfig({ file: lastFile, category: lastCategory, path: lastPath });
       }
     }
   }, [sheetConfig, setSheetConfig]);
 
   // Log the active sheet config for debugging
   console.log("JobsOverview received sheetConfig:", sheetConfig);
+  console.log("Using sheetConfig:", sheetConfig);
 
   const [jobs, setJobs] = useState<JobData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -311,24 +321,30 @@ const JobsOverview = ({
       if (
         sheetConfig &&
         sheetConfig.file &&
-        sheetConfig.file !== lastExtractedFile // Only extract if file changed
+        sheetConfig.path && // <--- this must be present!
+        sheetConfig.file !== lastExtractedFile
       ) {
         setIsLoading(true);
-        const { data, error } = await supabase.storage.from("xlsx-files").download(sheetConfig.file);
+        // Clean up slashes just in case
+        const cleanPath = sheetConfig.path.replace(/\/$/, "");
+        const cleanFile = sheetConfig.file.replace(/^\//, "");
+        const filePath = `${cleanPath}/${cleanFile}`;
+        console.log("Supabase filePath:", filePath);
+        const { data, error } = await supabase.storage.from("xlsx-files").download(filePath);
         if (error || !data) {
+          console.error("Supabase download error:", error?.message, "Path:", filePath);
           setIsLoading(false);
           return;
         }
         const arrayBuffer = await data.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer, { type: "array" });
         extractJobDataFromWorkbook(workbook);
-        setLastExtractedFile(sheetConfig.file); // Update last extracted file
+        setLastExtractedFile(sheetConfig.file);
         setIsLoading(false);
       }
     };
     fetchAndExtract();
-    // Only run when sheetConfig.file changes
-  }, [sheetConfig?.file]);
+  }, [sheetConfig?.file, sheetConfig?.path]);
 
   return (
     <div className="space-y-6">
